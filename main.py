@@ -1,58 +1,105 @@
+#!/usr/bin/env python3
 """
-binaural_playlist_generator.py
-Create educational binaural-beat tracks for focus or relaxation.
+binaural_generator_v2.py
+------------------------
+
+Generate educational binaural-beat audio tracks safely and efficiently.
+This rewrite creates the file in small chunks so it won’t run out of RAM
+even on long sessions (30–60 min).
 
 Requirements:
-pip install numpy scipy soundfile
+    pip install numpy soundfile
 """
 
 import numpy as np
 import soundfile as sf
 
-def generate_binaural(base_freq=200.0, offset=7.83, duration_min=5,
-                      fs=44100, ambient='none', filename='output.wav'):
+def generate_binaural(
+    base_freq: float = 200.0,
+    offset: float = 7.83,
+    duration_min: float = 5.0,
+    fs: int = 44100,
+    ambient: str = "none",
+    filename: str = "output.wav",
+    chunk_seconds: int = 10
+):
     """
-    base_freq: tone in left ear (Hz)
-    offset: difference to right ear (Hz)
-    duration_min: length of track
-    fs: sample rate
-    ambient: 'white', 'pink', 'brown', or 'none'
-    filename: name of file to save
+    Create a stereo WAV file containing a binaural-beat tone.
+
+    Parameters
+    ----------
+    base_freq : float
+        Left-ear carrier frequency in Hz.
+    offset : float
+        Frequency difference for right ear in Hz.
+    duration_min : float
+        Length of track in minutes.
+    fs : int
+        Sample rate in samples per second.
+    ambient : str
+        'white', 'pink', 'brown', or 'none' for optional noise bed.
+    filename : str
+        Output file name.
+    chunk_seconds : int
+        How many seconds of audio to process at once (reduces RAM use).
     """
-    duration = duration_min * 60
-    t = np.linspace(0, duration, int(fs * duration), endpoint=False)
 
-    # left/right carrier waves
-    left = np.sin(2 * np.pi * base_freq * t)
-    right = np.sin(2 * np.pi * (base_freq + offset) * t)
+    total_samples = int(duration_min * 60 * fs)
+    chunk_size = chunk_seconds * fs
 
-    # optional ambient layer
-    if ambient != 'none':
-        noise = np.random.normal(0, 1, len(t))
-        if ambient == 'pink':
-            # simple pink-noise approximation
-            b = np.cumsum(noise)
-            noise = b / np.max(np.abs(b))
-        elif ambient == 'brown':
-            b = np.cumsum(np.cumsum(noise))
-            noise = b / np.max(np.abs(b))
-        noise = noise * 0.2  # keep ambient subtle
-        left += noise
-        right += noise
+    # Open the output file for streaming writes
+    with sf.SoundFile(filename, mode="w", samplerate=fs, channels=2) as f:
+        samples_written = 0
+        while samples_written < total_samples:
+            # Determine time array for this chunk
+            current_chunk = min(chunk_size, total_samples - samples_written)
+            t = np.arange(current_chunk) / fs
 
-    stereo = np.vstack((left, right)).T
-    stereo /= np.max(np.abs(stereo))  # normalize
-    sf.write(filename, stereo, fs)
-    print(f"Saved {filename} ({offset:.2f} Hz beat)")
+            # Carrier tones
+            left = np.sin(2 * np.pi * base_freq * t)
+            right = np.sin(2 * np.pi * (base_freq + offset) * t)
 
-# Example playlist generation
+            # Optional ambient noise
+            if ambient != "none":
+                noise = np.random.normal(0, 1, current_chunk)
+                if ambient == "pink":
+                    noise = np.cumsum(noise)
+                elif ambient == "brown":
+                    noise = np.cumsum(np.cumsum(noise))
+                noise = noise / np.max(np.abs(noise))
+                noise *= 0.2
+                left += noise
+                right += noise
+
+            # Normalize and interleave stereo
+            stereo = np.vstack((left, right)).T
+            stereo /= np.max(np.abs(stereo) + 1e-9)
+
+            # Write chunk to disk
+            f.write(stereo)
+            samples_written += current_chunk
+
+            # Optional progress display
+            pct = (samples_written / total_samples) * 100
+            print(f"\rWriting {filename}: {pct:5.1f}% complete", end="")
+
+    print(f"\nSaved {filename} ({offset:.2f} Hz beat, {duration_min} min)")
+
+
+# Example playlist
 playlist = [
-    ("alpha_10hz.wav", 10, 10, 'white'),
-    ("schumann_7_83hz.wav", 7.83, 15, 'pink'),
-    ("theta_4hz.wav", 4, 20, 'brown'),
-    ("delta_1hz.wav", 1, 30, 'brown')
+    ("alpha_10hz.wav", 10, 20, "white"),
+    ("schumann_7_83hz.wav", 7.83, 25, "pink"),
+    ("theta_4hz.wav", 4, 35, "brown"),
+    ("delta_1hz.wav", 1, 45, "brown"),
 ]
-for name, freq, mins, amb in playlist:
-    generate_binaural(base_freq=200, offset=freq,
-                      duration_min=mins, ambient=amb,
-                      filename=name)
+
+if __name__ == "__main__":
+    for name, freq, mins, amb in playlist:
+        generate_binaural(
+            base_freq=200,
+            offset=freq,
+            duration_min=mins,
+            ambient=amb,
+            filename=name,
+        )
