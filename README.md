@@ -143,9 +143,3 @@ All generated audio is your property to use in personal or educational projects.
 
 ⸻
 
-💡  Author’s Note
-
-Use this tool as a laboratory for self-awareness and creativity.
-Tweak the frequencies, try new ambient layers, observe how each affects your focus and mood — and document your results like a true experimenter.
-
-⸻
