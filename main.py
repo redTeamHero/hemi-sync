@@ -1,92 +1,96 @@
 #!/usr/bin/env python3
 """
-binaural_generator_v2.py
+binaural_generator_v3.py
 ------------------------
-
-Generate educational binaural-beat audio tracks safely and efficiently.
-This rewrite creates the file in small chunks so it won’t run out of RAM
-even on long sessions (30–60 min).
+Create educational binaural-beat tracks and automatically overlay
+an ambience file (rainforest, rain, ocean, etc.).
 
 Requirements:
-    pip install numpy soundfile
+    pip install numpy soundfile pydub
+Supported ambience formats: WAV, MP3, FLAC, etc.
 """
 
 import numpy as np
 import soundfile as sf
+from pydub import AudioSegment
+import os
 
 def generate_binaural(
     base_freq: float = 200.0,
     offset: float = 7.83,
-    duration_min: float = 5.0,
+    duration_min: float = 10.0,
     fs: int = 44100,
     ambient: str = "none",
     filename: str = "output.wav",
     chunk_seconds: int = 10
 ):
-    """
-    Create a stereo WAV file containing a binaural-beat tone.
-
-    Parameters
-    ----------
-    base_freq : float
-        Left-ear carrier frequency in Hz.
-    offset : float
-        Frequency difference for right ear in Hz.
-    duration_min : float
-        Length of track in minutes.
-    fs : int
-        Sample rate in samples per second.
-    ambient : str
-        'white', 'pink', 'brown', or 'none' for optional noise bed.
-    filename : str
-        Output file name.
-    chunk_seconds : int
-        How many seconds of audio to process at once (reduces RAM use).
-    """
-
+    """Stream-safe generation of a stereo binaural tone."""
     total_samples = int(duration_min * 60 * fs)
     chunk_size = chunk_seconds * fs
 
-    # Open the output file for streaming writes
     with sf.SoundFile(filename, mode="w", samplerate=fs, channels=2) as f:
         samples_written = 0
         while samples_written < total_samples:
-            # Determine time array for this chunk
-            current_chunk = min(chunk_size, total_samples - samples_written)
-            t = np.arange(current_chunk) / fs
+            n = min(chunk_size, total_samples - samples_written)
+            t = np.arange(n) / fs
 
-            # Carrier tones
             left = np.sin(2 * np.pi * base_freq * t)
             right = np.sin(2 * np.pi * (base_freq + offset) * t)
 
-            # Optional ambient noise
             if ambient != "none":
-                noise = np.random.normal(0, 1, current_chunk)
+                noise = np.random.normal(0, 1, n)
                 if ambient == "pink":
                     noise = np.cumsum(noise)
                 elif ambient == "brown":
                     noise = np.cumsum(np.cumsum(noise))
-                noise = noise / np.max(np.abs(noise))
+                noise /= np.max(np.abs(noise))
                 noise *= 0.2
                 left += noise
                 right += noise
 
-            # Normalize and interleave stereo
             stereo = np.vstack((left, right)).T
             stereo /= np.max(np.abs(stereo) + 1e-9)
-
-            # Write chunk to disk
             f.write(stereo)
-            samples_written += current_chunk
-
-            # Optional progress display
+            samples_written += n
             pct = (samples_written / total_samples) * 100
             print(f"\rWriting {filename}: {pct:5.1f}% complete", end="")
-
     print(f"\nSaved {filename} ({offset:.2f} Hz beat, {duration_min} min)")
 
+def overlay_ambience(
+    binaural_file: str,
+    ambience_file: str,
+    out_file: str = None,
+    ambience_gain_db: float = -20.0,
+):
+    """
+    Overlay an external ambience (rainforest, rain, ocean, etc.) under
+    a generated binaural WAV.
 
-# Example playlist
+    ambience_gain_db: negative value lowers ambience volume.
+    """
+    if out_file is None:
+        root, ext = os.path.splitext(binaural_file)
+        out_file = f"{root}_mix{ext}"
+
+    print(f"Overlaying ambience '{ambience_file}' → {out_file}")
+
+    tone = AudioSegment.from_wav(binaural_file)
+    amb = AudioSegment.from_file(ambience_file)
+
+    # loop ambience to match tone length
+    if len(amb) < len(tone):
+        amb *= (len(tone) // len(amb) + 1)
+
+    amb = amb[: len(tone)]  # trim excess
+    amb = amb - abs(ambience_gain_db)
+
+    mixed = tone.overlay(amb)
+    mixed.export(out_file, format="wav")
+    print(f"Saved mixed track → {out_file}")
+
+# --------------------------------------------------------------------
+# Example playlist (base tone + ambient noise layer)
+# --------------------------------------------------------------------
 playlist = [
     ("alpha_10hz.wav", 10, 20, "white"),
     ("schumann_7_83hz.wav", 7.83, 25, "pink"),
@@ -95,6 +99,7 @@ playlist = [
 ]
 
 if __name__ == "__main__":
+    # Step 1 – Generate clean binaural files
     for name, freq, mins, amb in playlist:
         generate_binaural(
             base_freq=200,
@@ -103,3 +108,12 @@ if __name__ == "__main__":
             ambient=amb,
             filename=name,
         )
+
+    # Step 2 – Optionally overlay ambience file(s)
+    # Replace with the path to your actual ambience (rainforest.mp3, rain.wav, etc.)
+    ambience_path = "rainforest.mp3"
+    if os.path.exists(ambience_path):
+        for name, *_ in playlist:
+            overlay_ambience(name, ambience_path)
+    else:
+        print("\nNo ambience file found; skipped overlay stage.")
