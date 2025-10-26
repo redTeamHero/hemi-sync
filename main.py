@@ -47,12 +47,11 @@ def generate_binaural(base_freq=200.0, offset=7.83, duration_min=5,
 
 # Example playlist generation
 playlist = [
-    ("alpha_10hz.wav", 10, 20, 'white'),
-    ("schumann_7_83hz.wav", 7.83, 25, 'pink'),
-    ("theta_4hz.wav", 4, 35, 'brown'),
-    ("delta_1hz.wav", 1, 45, 'brown')
+    ("alpha_10hz.wav", 10, 10, 'white'),
+    ("schumann_7_83hz.wav", 7.83, 15, 'pink'),
+    ("theta_4hz.wav", 4, 20, 'brown'),
+    ("delta_1hz.wav", 1, 30, 'brown')
 ]
-
 for name, freq, mins, amb in playlist:
     generate_binaural(base_freq=200, offset=freq,
                       duration_min=mins, ambient=amb,
